@@ -74,29 +74,32 @@ function Presence:setup(options)
 
     -- Initialize logger
     self:set_option("log_level", nil, false)
-    self.log = log:init({ level = options.log_level })
+    self.log = log:init({level = options.log_level})
 
     -- Get operating system information including path separator
     -- http://www.lua.org/manual/5.3/manual.html#pdf-package.config
     local uname = vim.loop.os_uname()
-    local separator = package.config:sub(1,1)
+    local separator = package.config:sub(1, 1)
     local wsl_distro_name = os.getenv("WSL_DISTRO_NAME")
     local os_name = self.get_os_name(uname)
     self.os = {
         name = os_name,
         is_wsl = uname.release:find("Microsoft") ~= nil,
-        path_separator = separator,
+        path_separator = separator
     }
 
     -- Print setup message with OS information
     local setup_message_fmt = "Setting up plugin for %s"
     if self.os.name then
-        local setup_message = self.os.is_wsl
-            and string.format(setup_message_fmt.." in WSL (%s)", self.os.name, vim.inspect(wsl_distro_name))
-            or string.format(setup_message_fmt, self.os.name)
+        local setup_message = self.os.is_wsl and
+                                  string.format(
+                                      setup_message_fmt .. " in WSL (%s)",
+                                      self.os.name, vim.inspect(wsl_distro_name)) or
+                                  string.format(setup_message_fmt, self.os.name)
         self.log:debug(setup_message)
     else
-        self.log:error(string.format("Unable to detect operating system: %s", vim.inspect(vim.loop.os_uname())))
+        self.log:error(string.format("Unable to detect operating system: %s",
+                                     vim.inspect(vim.loop.os_uname())))
     end
 
     -- Use the default or user-defined client id if provided
@@ -119,11 +122,14 @@ function Presence:setup(options)
     self:set_option("reading_text", "Reading %s")
     self:set_option("workspace_text", "Working on %s")
     self:set_option("line_number_text", "Line %s out of %s")
+    -- Blacklist
+    self:set_option("blacklist", {})
 
     -- Get and check discord socket path
     local discord_socket_path = self:get_discord_socket_path()
     if discord_socket_path then
-        self.log:debug(string.format("Using Discord IPC socket path: %s", discord_socket_path))
+        self.log:debug(string.format("Using Discord IPC socket path: %s",
+                                     discord_socket_path))
         self:check_discord_socket(discord_socket_path)
     else
         self.log:error("Failed to determine Discord IPC socket path")
@@ -133,13 +139,14 @@ function Presence:setup(options)
     self.discord = Discord:init({
         logger = self.log,
         client_id = options.client_id,
-        ipc_socket = discord_socket_path,
+        ipc_socket = discord_socket_path
     })
 
     -- Seed instance id using unique socket path
     local seed_nums = {}
     self.socket:gsub(".", function(c) table.insert(seed_nums, c:byte()) end)
-    self.id = self.discord.generate_uuid(tonumber(table.concat(seed_nums)) / os.clock())
+    self.id = self.discord.generate_uuid(
+                  tonumber(table.concat(seed_nums)) / os.clock())
     self.log:debug(string.format("Using id %s", self.id))
 
     -- Ensure auto-update config is reflected in its global var setting
@@ -174,9 +181,7 @@ end
 
 -- To ensure consistent option values, coalesce true and false values to 1 and 0
 function Presence.coalesce_option(value)
-    if type(value) == "boolean" then
-        return value and 1 or 0
-    end
+    if type(value) == "boolean" then return value and 1 or 0 end
 
     return value
 end
@@ -195,9 +200,7 @@ function Presence:set_option(option, default, validate)
         self:check_dup_options(option)
     end
 
-    self.options[option] = self.options[option] or
-        vim.g[g_variable] or
-        default
+    self.options[option] = self.options[option] or vim.g[g_variable] or default
 end
 
 -- Check and warn for duplicate user-defined options
@@ -238,13 +241,12 @@ end
 function Presence:cancel()
     self.log:debug("Canceling Discord presence...")
 
-    if not self.discord:is_connected() then
-        return
-    end
+    if not self.discord:is_connected() then return end
 
     self.discord:set_activity(nil, function(err)
         if err then
-            self.log:error(string.format("Failed to cancel activity in Discord: %s", err))
+            self.log:error(string.format(
+                               "Failed to cancel activity in Discord: %s", err))
             return
         end
 
@@ -257,12 +259,14 @@ function Presence:call_remote_nvim_instance(socket, command)
     local remote_nvim_instance = vim.loop.new_pipe(true)
 
     remote_nvim_instance:connect(socket, function()
-        self.log:debug(string.format("Connected to remote nvim instance at %s", socket))
+        self.log:debug(string.format("Connected to remote nvim instance at %s",
+                                     socket))
 
-        local packed = msgpack.pack({ 0, 0, "nvim_command", { command } })
+        local packed = msgpack.pack({0, 0, "nvim_command", {command}})
 
         remote_nvim_instance:write(packed, function()
-            self.log:debug(string.format("Wrote to remote nvim instance: %s", socket))
+            self.log:debug(string.format("Wrote to remote nvim instance: %s",
+                                         socket))
         end)
     end)
 end
@@ -301,10 +305,11 @@ function Presence:connect(on_done)
         if err == "EISCONN" then
             self.log:info("Already connected to Discord")
         elseif err == "ECONNREFUSED" then
-            self.log:warn("Failed to connect to Discord: "..err.." (is Discord running?)")
+            self.log:warn("Failed to connect to Discord: " .. err ..
+                              " (is Discord running?)")
             return
         elseif err then
-            self.log:error("Failed to connect to Discord: "..err)
+            self.log:error("Failed to connect to Discord: " .. err)
             return
         end
 
@@ -330,12 +335,13 @@ function Presence:authorize(on_done)
             self.is_authorized = true
             return on_done()
         elseif err then
-            self.log:error("Failed to authorize with Discord: "..err)
+            self.log:error("Failed to authorize with Discord: " .. err)
             self.is_authorized = false
             return
         end
 
-        self.log:info(string.format("Authorized with Discord for %s", response.data.user.username))
+        self.log:info(string.format("Authorized with Discord for %s",
+                                    response.data.user.username))
         self.is_authorized = true
 
         if on_done then on_done() end
@@ -349,31 +355,26 @@ function Presence:get_discord_socket_path()
 
     if self.os.is_wsl then
         -- Use socket created by relay for WSL
-        sock_path = "/var/run/"..sock_name
+        sock_path = "/var/run/" .. sock_name
     elseif self.os.name == "windows" then
         -- Use named pipe in NPFS for Windows
-        sock_path = [[\\.\pipe\]]..sock_name
+        sock_path = [[\\.\pipe\]] .. sock_name
     elseif self.os.name == "macos" then
         -- Use $TMPDIR for macOS
         local path = os.getenv("TMPDIR")
-        sock_path = path:match("/$")
-            and path..sock_name
-            or path.."/"..sock_name
+        sock_path = path:match("/$") and path .. sock_name or path .. "/" ..
+                        sock_name
     elseif self.os.name == "linux" then
         -- Check various temp directory environment variables
-        local env_vars = {
-            "XDG_RUNTIME_DIR",
-            "TEMP",
-            "TMP",
-            "TMPDIR",
-        }
+        local env_vars = {"XDG_RUNTIME_DIR", "TEMP", "TMP", "TMPDIR"}
 
         for i = 1, #env_vars do
             local var = env_vars[i]
             local path = os.getenv(var)
             if path then
                 self.log:debug(string.format("Using runtime path: %s", path))
-                sock_path = path:match("/$") and path..sock_name or path.."/"..sock_name
+                sock_path = path:match("/$") and path .. sock_name or path ..
+                                "/" .. sock_name
                 break
             end
         end
@@ -390,9 +391,7 @@ end
 
 -- Gets the current project name
 function Presence:get_project_name(file_path)
-    if not file_path then
-        return nil
-    end
+    if not file_path then return nil end
 
     -- Escape quotes in the file path
     file_path = file_path:gsub([["]], [[\"]])
@@ -400,9 +399,9 @@ function Presence:get_project_name(file_path)
     -- TODO: Only checks for a git repository, could add more checks here
     -- Might want to run this in a background process depending on performance
     local project_path_cmd = "git rev-parse --show-toplevel"
-    project_path_cmd = file_path
-        and string.format([[cd "%s" && %s]], file_path, project_path_cmd)
-        or project_path_cmd
+    project_path_cmd = file_path and
+                           string.format([[cd "%s" && %s]], file_path,
+                                         project_path_cmd) or project_path_cmd
 
     local project_path = vim.fn.system(project_path_cmd)
     project_path = vim.trim(project_path)
@@ -413,7 +412,8 @@ function Presence:get_project_name(file_path)
     end
     if vim.v.shell_error ~= 0 or #project_path == 0 then
         local message_fmt = "Failed to get project name (error code %d): %s"
-        self.log:error(string.format(message_fmt, vim.v.shell_error, project_path))
+        self.log:error(string.format(message_fmt, vim.v.shell_error,
+                                     project_path))
         return nil
     end
 
@@ -427,7 +427,8 @@ end
 
 -- Get the name of the parent directory for the given path
 function Presence.get_dir_path(path, path_separator)
-    return path:match(string.format("^(.+%s.+)%s.*$", path_separator, path_separator))
+    return path:match(string.format("^(.+%s.+)%s.*$", path_separator,
+                                    path_separator))
 end
 
 -- Get the name of the file for the given path
@@ -436,14 +437,12 @@ function Presence.get_filename(path, path_separator)
 end
 
 -- Get the file extension for the given filename
-function Presence.get_file_extension(path)
-    return path:match("^.+%.(.+)$")
-end
+function Presence.get_file_extension(path) return path:match("^.+%.(.+)$") end
 
 -- Get the status text for the current buffer
 function Presence:get_status_text(filename)
-    local file_explorer = file_explorers[vim.bo.filetype:match "[^%d]+"]
-        or file_explorers[(filename or ""):match "[^%d]+"]
+    local file_explorer = file_explorers[vim.bo.filetype:match "[^%d]+"] or
+                              file_explorers[(filename or ""):match "[^%d]+"]
     local plugin_manager = plugin_managers[vim.bo.filetype]
 
     if file_explorer then
@@ -478,57 +477,43 @@ function Presence:get_nvim_socket_paths(on_done)
         local cmd_fmt = "for file in %s/nvim*; do echo $file/0; done"
         local shell_cmd = string.format(cmd_fmt, vim.loop.os_tmpdir() or "/tmp")
 
-        cmd = {
-            "sh",
-            "-c",
-            shell_cmd,
-        }
+        cmd = {"sh", "-c", shell_cmd}
     elseif self.os.name == "windows" then
         cmd = {
-            "powershell.exe",
-            "-Command",
-            [[(Get-ChildItem \\.\pipe\).FullName | findstr 'nvim']],
+            "powershell.exe", "-Command",
+            [[(Get-ChildItem \\.\pipe\).FullName | findstr 'nvim']]
         }
     elseif self.os.name == "macos" then
         if vim.fn.executable("netstat") == 0 then
-            self.log:warn("Unable to get nvim socket paths: `netstat` command unavailable")
+            self.log:warn(
+                "Unable to get nvim socket paths: `netstat` command unavailable")
             return
         end
 
         -- Define macOS BSD netstat output parser
-        function parser.parse(data)
-            return data:match("%s(/.+)")
-        end
+        function parser.parse(data) return data:match("%s(/.+)") end
 
-        cmd = table.concat({
-            "netstat -u",
-            [[grep --color=never "nvim.*/0"]],
-        }, "|")
+        cmd = table.concat({"netstat -u", [[grep --color=never "nvim.*/0"]]},
+                           "|")
     elseif self.os.name == "linux" then
         if vim.fn.executable("netstat") == 1 then
             -- Use `netstat` if available
-            cmd = table.concat({
-                "netstat -u",
-                [[grep --color=never "nvim.*/0"]],
-            }, "|")
+            cmd = table.concat(
+                      {"netstat -u", [[grep --color=never "nvim.*/0"]]}, "|")
 
             -- Define netstat output parser
-            function parser.parse(data)
-                return data:match("%s(/.+)")
-            end
+            function parser.parse(data) return data:match("%s(/.+)") end
         elseif vim.fn.executable("ss") == 1 then
             -- Use `ss` if available
-            cmd = table.concat({
-                "ss -lx",
-                [[grep "nvim.*/0"]],
-            }, "|")
+            cmd = table.concat({"ss -lx", [[grep "nvim.*/0"]]}, "|")
 
             -- Define ss output parser
             function parser.parse(data)
                 return data:match("%s(/.-)%s")
             end
         else
-            local warning_msg = "Unable to get nvim socket paths: `netstat` and `ss` commands unavailable"
+            local warning_msg =
+                "Unable to get nvim socket paths: `netstat` and `ss` commands unavailable"
             self.log:warn(warning_msg)
             return
         end
@@ -542,7 +527,8 @@ function Presence:get_nvim_socket_paths(on_done)
         if not data then return end
 
         for i = 1, #data do
-            local socket = parser.parse and parser.parse(vim.trim(data[i])) or vim.trim(data[i])
+            local socket = parser.parse and parser.parse(vim.trim(data[i])) or
+                               vim.trim(data[i])
             if socket and socket ~= "" and socket ~= self.socket then
                 table.insert(sockets, socket)
             end
@@ -553,12 +539,14 @@ function Presence:get_nvim_socket_paths(on_done)
         if not data then return end
 
         if data[1] ~= "" then
-            self.log:error(string.format("Unable to get nvim socket paths: %s", data[1]))
+            self.log:error(string.format("Unable to get nvim socket paths: %s",
+                                         data[1]))
         end
     end
 
     local function handle_exit()
-        self.log:debug(string.format("Got nvim socket paths: %s", vim.inspect(sockets)))
+        self.log:debug(string.format("Got nvim socket paths: %s",
+                                     vim.inspect(sockets)))
         on_done(sockets)
     end
 
@@ -567,7 +555,7 @@ function Presence:get_nvim_socket_paths(on_done)
     vim.fn.jobstart(cmd, {
         on_stdout = handle_data,
         on_stderr = handle_error,
-        on_exit = handle_exit,
+        on_exit = handle_exit
     })
 end
 
@@ -580,9 +568,7 @@ function Presence.discord_event(on_ready)
         end
 
         local args = {...}
-        local callback = function()
-            on_ready(self, unpack(args))
-        end
+        local callback = function() on_ready(self, unpack(args)) end
 
         -- Call Discord if already connected and authorized
         if self.is_connected and self.is_authorized then
@@ -592,7 +578,8 @@ function Presence.discord_event(on_ready)
         -- Schedule event if currently authorizing with Discord
         if self.is_connecting or self.is_authorizing then
             local action = self.is_connecting and "connecting" or "authorizing"
-            local message_fmt = "Currently %s with Discord, scheduling callback for later..."
+            local message_fmt =
+                "Currently %s with Discord, scheduling callback for later..."
             self.log:debug(string.format(message_fmt, action))
             return vim.schedule(callback)
         end
@@ -604,37 +591,82 @@ function Presence.discord_event(on_ready)
 
         -- Connect and authorize plugin with Discord
         self:connect(function()
-            if self.is_authorized then
-                return callback()
-            end
+            if self.is_authorized then return callback() end
 
             self:authorize(callback)
         end)
     end
 end
 
+-- Check if the current project/parent is in blacklist
+function Presence:check_blacklist(buffer, parent_dirpath)
+    -- Parse vim buffer
+    -- local parent_dirpath = self.get_dir_path(buffer, self.os.path_separator)
+    local parent_dirname = buffer:match(string.format("^.+%s(.+)%s.*$",
+                                                      self.os.path_separator,
+                                                      self.os.path_separator))
+
+    -- Get project name using parent directory
+    local _, project_path = self:get_project_name(parent_dirpath)
+    local blacklist_table = self.options['blacklist']
+
+    local project_dirname
+    if project_path then
+        project_dirname = project_path:match(
+                              string.format("^.+%s(.+)$",
+                                            self.os.path_separator,
+                                            self.os.path_separator))
+    else
+        project_dirname = nil
+    end
+    -- Loop over the values to see if the provided project/path is in the blacklist
+    for _, val in pairs(blacklist_table) do
+        if val == buffer or val == parent_dirname or val == project_dirname or
+            val == project_path or val == parent_dirpath then return true end
+    end
+
+    return false
+end
+
 -- Update Rich Presence for the provided vim buffer
 function Presence:update_for_buffer(buffer, should_debounce)
+
+    -- Check for blacklist
+    local is_blacklisted = self:check_blacklist(buffer)
+
+    if is_blacklisted then
+        self.last_activity.file = buffer
+        self.log:debug("Project is blacklisted")
+        self:cancel()
+        return
+    end
+
     -- Avoid unnecessary updates if the previous activity was for the current buffer
     -- (allow same-buffer updates when line numbers are enabled)
-    if self.options.enable_line_number == 0 and self.last_activity.file == buffer then
-        self.log:debug(string.format("Activity already set for %s, skipping...", buffer))
+    if self.options.enable_line_number == 0 and self.last_activity.file ==
+        buffer then
+        self.log:debug(string.format("Activity already set for %s, skipping...",
+                                     buffer))
         return
     end
 
     local activity_set_at = os.time()
     -- If we shouldn't debounce and we trigger an activity, keep this value the same.
     -- Otherwise set it to the current time.
-    local relative_activity_set_at = should_debounce and self.last_activity.relative_set_at or os.time()
+    local relative_activity_set_at = should_debounce and
+                                         self.last_activity.relative_set_at or
+                                         os.time()
 
-    self.log:debug(string.format("Setting activity for %s...", buffer and #buffer > 0 and buffer or "unnamed buffer"))
+    self.log:debug(string.format("Setting activity for %s...", buffer and
+                                     #buffer > 0 and buffer or "unnamed buffer"))
 
     -- Parse vim buffer
     local filename = self.get_filename(buffer, self.os.path_separator)
     local parent_dirpath = self.get_dir_path(buffer, self.os.path_separator)
     local extension = filename and self.get_file_extension(filename) or nil
 
-    self.log:debug(string.format("Parsed filename %s with %s extension", filename, extension or "no"))
+    self.log:debug(string.format("Parsed filename %s with %s extension",
+                                 filename, extension or "no"))
 
     -- Determine image text and asset key
     local name = filename
@@ -643,7 +675,8 @@ function Presence:update_for_buffer(buffer, should_debounce)
     local file_asset = file_assets[filename] or file_assets[extension]
     if file_asset then
         name, asset_key, description = unpack(file_asset)
-        self.log:debug(string.format("Using file asset: %s", vim.inspect(file_asset)))
+        self.log:debug(string.format("Using file asset: %s",
+                                     vim.inspect(file_asset)))
     end
 
     local file_text = description or name
@@ -654,20 +687,19 @@ function Presence:update_for_buffer(buffer, should_debounce)
         large_image = use_file_as_main_image and asset_key or "neovim",
         large_text = use_file_as_main_image and file_text or neovim_image_text,
         small_image = use_file_as_main_image and "neovim" or asset_key,
-        small_text = use_file_as_main_image and neovim_image_text or file_text,
+        small_text = use_file_as_main_image and neovim_image_text or file_text
     }
 
     local status_text = self:get_status_text(filename)
     if not status_text then
-        return self.log:debug("No status text for the given buffer, skipping...")
+        return
+            self.log:debug("No status text for the given buffer, skipping...")
     end
 
     local activity = {
         state = status_text,
         assets = assets,
-        timestamps = {
-            start = relative_activity_set_at,
-        },
+        timestamps = {start = relative_activity_set_at}
     }
 
     -- Get the current line number and line count if the user has set the enable_line_number option
@@ -678,9 +710,10 @@ function Presence:update_for_buffer(buffer, should_debounce)
         local line_count = vim.api.nvim_buf_line_count(0)
         local line_number_text = self.options.line_number_text
 
-        activity.details = type(line_number_text) == "function"
-        and line_number_text(line_number, line_count)
-        or string.format(line_number_text, line_number, line_count)
+        activity.details = type(line_number_text) == "function" and
+                               line_number_text(line_number, line_count) or
+                               string.format(line_number_text, line_number,
+                                             line_count)
 
         self.workspace = nil
         self.last_activity = {
@@ -688,12 +721,13 @@ function Presence:update_for_buffer(buffer, should_debounce)
             file = buffer,
             set_at = activity_set_at,
             relative_set_at = relative_activity_set_at,
-            workspace = nil,
+            workspace = nil
         }
     else
         -- Include project details if available and if the user hasn't set the enable_line_number option
 
-        self.log:debug(string.format("Getting project name for %s...", parent_dirpath))
+        self.log:debug(string.format("Getting project name for %s...",
+                                     parent_dirpath))
 
         local workspace_text = self.options.workspace_text
         local project_name, project_path = self:get_project_name(parent_dirpath)
@@ -702,9 +736,9 @@ function Presence:update_for_buffer(buffer, should_debounce)
 
             self.log:debug(string.format("Detected project: %s", project_name))
 
-            activity.details = type(workspace_text) == "function"
-                and workspace_text(project_name, buffer)
-                or string.format(workspace_text, project_name)
+            activity.details = type(workspace_text) == "function" and
+                                   workspace_text(project_name, buffer) or
+                                   string.format(workspace_text, project_name)
 
             self.workspace = project_path
             self.last_activity = {
@@ -712,18 +746,18 @@ function Presence:update_for_buffer(buffer, should_debounce)
                 file = buffer,
                 set_at = activity_set_at,
                 relative_set_at = relative_activity_set_at,
-                workspace = project_path,
+                workspace = project_path
             }
 
             if self.workspaces[project_path] then
                 self.workspaces[project_path].updated_at = activity_set_at
                 activity.timestamps = {
-                    start = self.workspaces[project_path].started_at,
+                    start = self.workspaces[project_path].started_at
                 }
             else
                 self.workspaces[project_path] = {
                     started_at = activity_set_at,
-                    updated_at = activity_set_at,
+                    updated_at = activity_set_at
                 }
             end
 
@@ -736,7 +770,7 @@ function Presence:update_for_buffer(buffer, should_debounce)
                 file = buffer,
                 set_at = activity_set_at,
                 relative_set_at = relative_activity_set_at,
-                workspace = nil,
+                workspace = nil
             }
 
             -- When no project is detected, set custom workspace text if:
@@ -760,7 +794,8 @@ function Presence:update_for_buffer(buffer, should_debounce)
     self.log:debug("Setting Discord activity...")
     self.discord:set_activity(activity, function(err)
         if err then
-            self.log:error(string.format("Failed to set activity in Discord: %s", err))
+            self.log:error(string.format(
+                               "Failed to set activity in Discord: %s", err))
             return
         end
 
@@ -769,33 +804,35 @@ function Presence:update_for_buffer(buffer, should_debounce)
 end
 
 -- Update Rich Presence for the current or provided vim buffer for an authorized connection
-Presence.update = Presence.discord_event(function(self, buffer, should_debounce)
-    -- Default update to not debounce by default
-    if should_debounce == nil then should_debounce = false end
+Presence.update = Presence.discord_event(
+                      function(self, buffer, should_debounce)
+        -- Default update to not debounce by default
+        if should_debounce == nil then should_debounce = false end
 
-    -- Debounce Rich Presence updates (default to 10 seconds):
-    -- https://discord.com/developers/docs/rich-presence/how-to#updating-presence
-    local last_updated_at = self.last_activity.set_at
-    local debounce_timeout = self.options.debounce_timeout
-    local should_skip =
-        should_debounce and
-        debounce_timeout and
-        last_updated_at and os.time() - last_updated_at <= debounce_timeout
+        -- Debounce Rich Presence updates (default to 10 seconds):
+        -- https://discord.com/developers/docs/rich-presence/how-to#updating-presence
+        local last_updated_at = self.last_activity.set_at
+        local debounce_timeout = self.options.debounce_timeout
+        local should_skip =
+            should_debounce and debounce_timeout and last_updated_at and
+                os.time() - last_updated_at <= debounce_timeout
 
-    if should_skip then
-        local message_fmt = "Last activity sent was within %d seconds ago, skipping..."
-        self.log:debug(string.format(message_fmt, debounce_timeout))
-        return
-    end
+        if should_skip then
+            local message_fmt =
+                "Last activity sent was within %d seconds ago, skipping..."
+            self.log:debug(string.format(message_fmt, debounce_timeout))
+            return
+        end
 
-    if buffer then
-        self:update_for_buffer(buffer, should_debounce)
-    else
-        vim.schedule(function()
-            self:update_for_buffer(self.get_current_buffer(), should_debounce)
-        end)
-    end
-end)
+        if buffer then
+            self:update_for_buffer(buffer, should_debounce)
+        else
+            vim.schedule(function()
+                self:update_for_buffer(self.get_current_buffer(),
+                                       should_debounce)
+            end)
+        end
+    end)
 
 --------------------------------------------------
 -- Presence peer-to-peer API
@@ -805,17 +842,15 @@ end)
 function Presence:register_peer(id, socket)
     self.log:debug(string.format("Registering peer %s...", id))
 
-    self.peers[id] = {
-        socket = socket,
-        workspace = nil,
-    }
+    self.peers[id] = {socket = socket, workspace = nil}
 
     self.log:info(string.format("Registered peer %s", id))
 end
 
 -- Unregister some remote peer
 function Presence:unregister_peer(id, peer)
-    self.log:debug(string.format("Unregistering peer %s... %s", id, vim.inspect(peer)))
+    self.log:debug(string.format("Unregistering peer %s... %s", id,
+                                 vim.inspect(peer)))
 
     -- Remove workspace if no other peers share the same workspace
     -- Initialize to remove if the workspace differs from the local workspace, check peers below
@@ -839,7 +874,8 @@ function Presence:unregister_peer(id, peer)
     -- Update workspaces if necessary
     local workspaces = {}
     if should_remove_workspace then
-        self.log:debug(string.format("Should remove workspace %s", peer.workspace))
+        self.log:debug(string.format("Should remove workspace %s",
+                                     peer.workspace))
         for workspace, data in pairs(self.workspaces) do
             if workspace ~= peer.workspace then
                 workspaces[workspace] = data
@@ -866,22 +902,19 @@ function Presence:register_and_sync_peer(id, socket)
 
     -- Initialize the remote peer's list including self
     local peers = {
-        [self.id] = {
-            socket = self.socket,
-            workspace = self.workspace,
-        }
+        [self.id] = {socket = self.socket, workspace = self.workspace}
     }
     for peer_id, peer in pairs(self.peers) do
-        if peer_id ~= id then
-            peers[peer_id] = peer
-        end
+        if peer_id ~= id then peers[peer_id] = peer end
     end
 
-    self:call_remote_method(socket, "sync_self", {{
-        last_activity = self.last_activity,
-        peers = peers,
-        workspaces = self.workspaces,
-    }})
+    self:call_remote_method(socket, "sync_self", {
+        {
+            last_activity = self.last_activity,
+            peers = peers,
+            workspaces = self.workspaces
+        }
+    })
 end
 
 -- Register self to any remote Neovim instances
@@ -893,36 +926,40 @@ function Presence:register_self()
             return
         end
 
-        self.log:debug(string.format("Registering as a new peer to %d instance(s)...", #sockets))
+        self.log:debug(string.format(
+                           "Registering as a new peer to %d instance(s)...",
+                           #sockets))
 
         -- Register and sync state with one of the sockets
-        self:call_remote_method(sockets[1], "register_and_sync_peer", { self.id, self.socket })
+        self:call_remote_method(sockets[1], "register_and_sync_peer",
+                                {self.id, self.socket})
 
-        if #sockets == 1 then
-            return
-        end
+        if #sockets == 1 then return end
 
         for i = 2, #sockets do
-            self:call_remote_method(sockets[i], "register_peer", { self.id, self.socket })
+            self:call_remote_method(sockets[i], "register_peer",
+                                    {self.id, self.socket})
         end
     end)
 end
 
 -- Unregister self to all peers
 function Presence:unregister_self()
-    local self_as_peer = {
-        socket = self.socket,
-        workspace = self.workspace,
-    }
+    local self_as_peer = {socket = self.socket, workspace = self.workspace}
 
     local i = 1
     for id, peer in pairs(self.peers) do
         if self.options.auto_update and i == 1 then
-            self.log:debug(string.format("Unregistering self and setting activity for peer %s...", id))
-            self:call_remote_method(peer.socket, "unregister_peer_and_set_activity", { self.id, self_as_peer })
+            self.log:debug(string.format(
+                               "Unregistering self and setting activity for peer %s...",
+                               id))
+            self:call_remote_method(peer.socket,
+                                    "unregister_peer_and_set_activity",
+                                    {self.id, self_as_peer})
         else
             self.log:debug(string.format("Unregistering self to peer %s...", id))
-            self:call_remote_method(peer.socket, "unregister_peer", { self.id, self_as_peer })
+            self:call_remote_method(peer.socket, "unregister_peer",
+                                    {self.id, self_as_peer})
         end
         i = i + 1
     end
@@ -930,46 +967,45 @@ end
 
 -- Sync self with data from a remote peer
 function Presence:sync_self(data)
-    self.log:debug(string.format("Syncing data from remote peer...", vim.inspect(data)))
+    self.log:debug(string.format("Syncing data from remote peer...",
+                                 vim.inspect(data)))
 
-    for key, value in pairs(data) do
-        self[key] = value
-    end
+    for key, value in pairs(data) do self[key] = value end
 
     self.log:info("Synced runtime data from remote peer")
 end
 
 -- Sync activity set by self to all peers
 function Presence:sync_self_activity()
-    local self_as_peer = {
-        socket = self.socket,
-        workspace = self.workspace,
-    }
+    local self_as_peer = {socket = self.socket, workspace = self.workspace}
 
     for id, peer in pairs(self.peers) do
         self.log:debug(string.format("Syncing activity to peer %s...", id))
 
-        local peers = { [self.id] = self_as_peer }
+        local peers = {[self.id] = self_as_peer}
         for peer_id, peer_data in pairs(self.peers) do
             if peer_id ~= id then
                 peers[peer_id] = {
                     socket = peer_data.socket,
-                    workspace = peer_data.workspace,
+                    workspace = peer_data.workspace
                 }
             end
         end
 
-        self:call_remote_method(peer.socket, "sync_peer_activity", {{
-            last_activity = self.last_activity,
-            peers = peers,
-            workspaces = self.workspaces,
-        }})
+        self:call_remote_method(peer.socket, "sync_peer_activity", {
+            {
+                last_activity = self.last_activity,
+                peers = peers,
+                workspaces = self.workspaces
+            }
+        })
     end
 end
 
 -- Sync activity set by peer
 function Presence:sync_peer_activity(data)
-    self.log:debug(string.format("Syncing peer activity %s...", vim.inspect(data)))
+    self.log:debug(string.format("Syncing peer activity %s...",
+                                 vim.inspect(data)))
     self:cancel()
     self:sync_self(data)
 end
@@ -992,7 +1028,8 @@ function Presence:handle_focus_gained()
     -- Skip a potentially extraneous update call on initial startup if tmux is being used
     -- (See https://github.com/neovim/neovim/issues/14572)
     if next(self.last_activity) == nil and os.getenv("TMUX") then
-        self.log:debug("Skipping presence update for FocusGained event triggered by tmux...")
+        self.log:debug(
+            "Skipping presence update for FocusGained event triggered by tmux...")
         return
     end
 
@@ -1040,13 +1077,15 @@ function Presence:handle_win_leave()
     vim.schedule(function()
         -- Avoid canceling presence when switching to a quickfix window
         if vim.bo.filetype == "qf" then
-            self.log:debug("Not canceling presence due to switching to quickfix window...")
+            self.log:debug(
+                "Not canceling presence due to switching to quickfix window...")
             return
         end
 
         -- Avoid canceling presence when switching between windows
         if current_window ~= vim.api.nvim_get_current_win() then
-            self.log:debug("Not canceling presence due to switching to a window within the same instance...")
+            self.log:debug(
+                "Not canceling presence due to switching to a window within the same instance...")
             return
         end
 
