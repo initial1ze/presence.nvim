@@ -250,7 +250,7 @@ function Presence:cancel()
             return
         end
 
-        self.log:info("Canceled Discord presence")
+        self.log:info("Cancelled Discord presence")
     end)
 end
 
@@ -599,26 +599,24 @@ function Presence.discord_event(on_ready)
 end
 
 -- Check if the current project/parent is in blacklist
-function Presence:check_blacklist(buffer, parent_dirpath)
-    -- Parse vim buffer
-    -- local parent_dirpath = self.get_dir_path(buffer, self.os.path_separator)
-    local parent_dirname = buffer:match(string.format("^.+%s(.+)%s.*$",
-                                                      self.os.path_separator,
-                                                      self.os.path_separator))
+function Presence:check_blacklist(buffer, parent_dirpath, project_path)
+    local parent_dirname = nil
+    local project_dirname = nil
 
-    -- Get project name using parent directory
-    local _, project_path = self:get_project_name(parent_dirpath)
-    local blacklist_table = self.options['blacklist']
-
-    local project_dirname
-    if project_path then
-        project_dirname = project_path:match(
-                              string.format("^.+%s(.+)$",
-                                            self.os.path_separator,
-                                            self.os.path_separator))
-    else
-        project_dirname = nil
+    -- Parse parent/project directory name
+    if parent_dirpath then
+        parent_dirname = self.get_filename(parent_dirpath,
+                                           self.os.path_separator)
     end
+
+    if project_path then
+        project_dirname =
+            self.get_filename(project_path, self.os.path_separator)
+    end
+
+    -- blacklist table
+    local blacklist_table = self.options["blacklist"]
+
     -- Loop over the values to see if the provided project/path is in the blacklist
     for _, val in pairs(blacklist_table) do
         if val == buffer or val == parent_dirname or val == project_dirname or
@@ -628,54 +626,57 @@ function Presence:check_blacklist(buffer, parent_dirpath)
     return false
 end
 
--- Update Rich Presence for the provided vim buffer
+-- update rich presence for the provided vim buffer
 function Presence:update_for_buffer(buffer, should_debounce)
+    -- parse vim buffer
+    local filename = self.get_filename(buffer, self.os.path_separator)
+    local parent_dirpath = self.get_dir_path(buffer, self.os.path_separator)
+    local extension = filename and self.get_file_extension(filename) or nil
 
-    -- Check for blacklist
-    local is_blacklisted = self:check_blacklist(buffer)
+    self.log:debug(string.format("parsed filename %s with %s extension",
+                                 filename, extension or "no"))
+
+    -- parse project path
+    local project_name, project_path = self:get_project_name(parent_dirpath)
+
+    -- check for blacklist
+    local is_blacklisted = self:check_blacklist(buffer, parent_dirpath,
+                                                project_path)
 
     if is_blacklisted then
         self.last_activity.file = buffer
-        self.log:debug("Project is blacklisted")
+        self.log:debug("project is blacklisted")
         self:cancel()
         return
     end
 
-    -- Avoid unnecessary updates if the previous activity was for the current buffer
+    -- avoid unnecessary updates if the previous activity was for the current buffer
     -- (allow same-buffer updates when line numbers are enabled)
     if self.options.enable_line_number == 0 and self.last_activity.file ==
         buffer then
-        self.log:debug(string.format("Activity already set for %s, skipping...",
+        self.log:debug(string.format("activity already set for %s, skipping...",
                                      buffer))
         return
     end
 
     local activity_set_at = os.time()
-    -- If we shouldn't debounce and we trigger an activity, keep this value the same.
-    -- Otherwise set it to the current time.
+    -- if we shouldn't debounce and we trigger an activity, keep this value the same.
+    -- otherwise set it to the current time.
     local relative_activity_set_at = should_debounce and
                                          self.last_activity.relative_set_at or
                                          os.time()
 
-    self.log:debug(string.format("Setting activity for %s...", buffer and
+    self.log:debug(string.format("setting activity for %s...", buffer and
                                      #buffer > 0 and buffer or "unnamed buffer"))
 
-    -- Parse vim buffer
-    local filename = self.get_filename(buffer, self.os.path_separator)
-    local parent_dirpath = self.get_dir_path(buffer, self.os.path_separator)
-    local extension = filename and self.get_file_extension(filename) or nil
-
-    self.log:debug(string.format("Parsed filename %s with %s extension",
-                                 filename, extension or "no"))
-
-    -- Determine image text and asset key
+    -- determine image text and asset key
     local name = filename
     local asset_key = "code"
     local description = filename
     local file_asset = file_assets[filename] or file_assets[extension]
     if file_asset then
         name, asset_key, description = unpack(file_asset)
-        self.log:debug(string.format("Using file asset: %s",
+        self.log:debug(string.format("using file asset: %s",
                                      vim.inspect(file_asset)))
     end
 
@@ -693,7 +694,7 @@ function Presence:update_for_buffer(buffer, should_debounce)
     local status_text = self:get_status_text(filename)
     if not status_text then
         return
-            self.log:debug("No status text for the given buffer, skipping...")
+            self.log:debug("no status text for the given buffer, skipping...")
     end
 
     local activity = {
@@ -702,9 +703,9 @@ function Presence:update_for_buffer(buffer, should_debounce)
         timestamps = {start = relative_activity_set_at}
     }
 
-    -- Get the current line number and line count if the user has set the enable_line_number option
+    -- get the current line number and line count if the user has set the enable_line_number option
     if self.options.enable_line_number == 1 then
-        self.log:debug("Getting line number for current buffer...")
+        self.log:debug("getting line number for current buffer...")
 
         local line_number = vim.api.nvim_win_get_cursor(0)[1]
         local line_count = vim.api.nvim_buf_line_count(0)
@@ -724,17 +725,16 @@ function Presence:update_for_buffer(buffer, should_debounce)
             workspace = nil
         }
     else
-        -- Include project details if available and if the user hasn't set the enable_line_number option
+        -- include project details if available and if the user hasn't set the enable_line_number option
 
-        self.log:debug(string.format("Getting project name for %s...",
+        self.log:debug(string.format("getting project name for %s...",
                                      parent_dirpath))
 
         local workspace_text = self.options.workspace_text
-        local project_name, project_path = self:get_project_name(parent_dirpath)
 
         if project_name then
 
-            self.log:debug(string.format("Detected project: %s", project_name))
+            self.log:debug(string.format("detected project: %s", project_name))
 
             activity.details = type(workspace_text) == "function" and
                                    workspace_text(project_name, buffer) or
@@ -762,7 +762,7 @@ function Presence:update_for_buffer(buffer, should_debounce)
             end
 
         else
-            self.log:debug("No project detected")
+            self.log:debug("no project detected")
 
             self.workspace = nil
             self.last_activity = {
@@ -773,9 +773,9 @@ function Presence:update_for_buffer(buffer, should_debounce)
                 workspace = nil
             }
 
-            -- When no project is detected, set custom workspace text if:
-            -- * The custom function returns custom workspace text
-            -- * The configured workspace text does not contain a directive
+            -- when no project is detected, set custom workspace text if:
+            -- * the custom function returns custom workspace text
+            -- * the configured workspace text does not contain a directive
             if type(workspace_text) == "function" then
                 local custom_workspace_text = workspace_text(nil, buffer)
                 if custom_workspace_text then
@@ -787,29 +787,29 @@ function Presence:update_for_buffer(buffer, should_debounce)
         end
     end
 
-    -- Sync activity to all peers
-    self.log:debug("Sync activity to all peers...")
+    -- sync activity to all peers
+    self.log:debug("sync activity to all peers...")
     self:sync_self_activity()
 
-    self.log:debug("Setting Discord activity...")
+    self.log:debug("setting discord activity...")
     self.discord:set_activity(activity, function(err)
         if err then
             self.log:error(string.format(
-                               "Failed to set activity in Discord: %s", err))
+                               "failed to set activity in discord: %s", err))
             return
         end
 
-        self.log:info(string.format("Set activity in Discord for %s", filename))
+        self.log:info(string.format("set activity in discord for %s", filename))
     end)
 end
 
--- Update Rich Presence for the current or provided vim buffer for an authorized connection
+-- update rich presence for the current or provided vim buffer for an authorized connection
 Presence.update = Presence.discord_event(
                       function(self, buffer, should_debounce)
-        -- Default update to not debounce by default
+        -- default update to not debounce by default
         if should_debounce == nil then should_debounce = false end
 
-        -- Debounce Rich Presence updates (default to 10 seconds):
+        -- debounce rich presence updates (default to 10 seconds):
         -- https://discord.com/developers/docs/rich-presence/how-to#updating-presence
         local last_updated_at = self.last_activity.set_at
         local debounce_timeout = self.options.debounce_timeout
@@ -819,7 +819,7 @@ Presence.update = Presence.discord_event(
 
         if should_skip then
             local message_fmt =
-                "Last activity sent was within %d seconds ago, skipping..."
+                "last activity sent was within %d seconds ago, skipping..."
             self.log:debug(string.format(message_fmt, debounce_timeout))
             return
         end
@@ -835,34 +835,34 @@ Presence.update = Presence.discord_event(
     end)
 
 --------------------------------------------------
--- Presence peer-to-peer API
+-- presence peer-to-peer api
 --------------------------------------------------
 
--- Register some remote peer
+-- register some remote peer
 function Presence:register_peer(id, socket)
-    self.log:debug(string.format("Registering peer %s...", id))
+    self.log:debug(string.format("registering peer %s...", id))
 
     self.peers[id] = {socket = socket, workspace = nil}
 
-    self.log:info(string.format("Registered peer %s", id))
+    self.log:info(string.format("registered peer %s", id))
 end
 
--- Unregister some remote peer
+-- unregister some remote peer
 function Presence:unregister_peer(id, peer)
-    self.log:debug(string.format("Unregistering peer %s... %s", id,
+    self.log:debug(string.format("unregistering peer %s... %s", id,
                                  vim.inspect(peer)))
 
-    -- Remove workspace if no other peers share the same workspace
-    -- Initialize to remove if the workspace differs from the local workspace, check peers below
+    -- remove workspace if no other peers share the same workspace
+    -- initialize to remove if the workspace differs from the local workspace, check peers below
     local should_remove_workspace = peer.workspace ~= self.workspace
 
     local peers = {}
     for peer_id, peer_data in pairs(self.peers) do
-        -- Omit peer from peers list
+        -- omit peer from peers list
         if peer_id ~= id then
             peers[peer_id] = peer_data
 
-            -- Should not remove workspace if another peer shares the workspace
+            -- should not remove workspace if another peer shares the workspace
             if should_remove_workspace and peer.workspace == peer_data.workspace then
                 should_remove_workspace = false
             end
@@ -871,10 +871,10 @@ function Presence:unregister_peer(id, peer)
 
     self.peers = peers
 
-    -- Update workspaces if necessary
+    -- update workspaces if necessary
     local workspaces = {}
     if should_remove_workspace then
-        self.log:debug(string.format("Should remove workspace %s",
+        self.log:debug(string.format("should remove workspace %s",
                                      peer.workspace))
         for workspace, data in pairs(self.workspaces) do
             if workspace ~= peer.workspace then
@@ -885,22 +885,22 @@ function Presence:unregister_peer(id, peer)
         self.workspaces = workspaces
     end
 
-    self.log:info(string.format("Unregistered peer %s", id))
+    self.log:info(string.format("unregistered peer %s", id))
 end
 
--- Unregister some remote peer and set activity
+-- unregister some remote peer and set activity
 function Presence:unregister_peer_and_set_activity(id, peer)
     self:unregister_peer(id, peer)
     self:update()
 end
 
--- Register a remote peer and sync its data
+-- register a remote peer and sync its data
 function Presence:register_and_sync_peer(id, socket)
     self:register_peer(id, socket)
 
-    self.log:debug("Syncing data with newly registered peer...")
+    self.log:debug("syncing data with newly registered peer...")
 
-    -- Initialize the remote peer's list including self
+    -- initialize the remote peer's list including self
     local peers = {
         [self.id] = {socket = self.socket, workspace = self.workspace}
     }
@@ -917,20 +917,20 @@ function Presence:register_and_sync_peer(id, socket)
     })
 end
 
--- Register self to any remote Neovim instances
--- Simply emits to all nvim sockets as we have not yet been synced with peer list
+-- register self to any remote neovim instances
+-- simply emits to all nvim sockets as we have not yet been synced with peer list
 function Presence:register_self()
     self:get_nvim_socket_paths(function(sockets)
         if #sockets == 0 then
-            self.log:debug("No other remote nvim instances")
+            self.log:debug("no other remote nvim instances")
             return
         end
 
         self.log:debug(string.format(
-                           "Registering as a new peer to %d instance(s)...",
+                           "registering as a new peer to %d instance(s)...",
                            #sockets))
 
-        -- Register and sync state with one of the sockets
+        -- register and sync state with one of the sockets
         self:call_remote_method(sockets[1], "register_and_sync_peer",
                                 {self.id, self.socket})
 
@@ -943,7 +943,7 @@ function Presence:register_self()
     end)
 end
 
--- Unregister self to all peers
+-- unregister self to all peers
 function Presence:unregister_self()
     local self_as_peer = {socket = self.socket, workspace = self.workspace}
 
@@ -951,13 +951,13 @@ function Presence:unregister_self()
     for id, peer in pairs(self.peers) do
         if self.options.auto_update and i == 1 then
             self.log:debug(string.format(
-                               "Unregistering self and setting activity for peer %s...",
+                               "unregistering self and setting activity for peer %s...",
                                id))
             self:call_remote_method(peer.socket,
                                     "unregister_peer_and_set_activity",
                                     {self.id, self_as_peer})
         else
-            self.log:debug(string.format("Unregistering self to peer %s...", id))
+            self.log:debug(string.format("unregistering self to peer %s...", id))
             self:call_remote_method(peer.socket, "unregister_peer",
                                     {self.id, self_as_peer})
         end
@@ -965,22 +965,22 @@ function Presence:unregister_self()
     end
 end
 
--- Sync self with data from a remote peer
+-- sync self with data from a remote peer
 function Presence:sync_self(data)
-    self.log:debug(string.format("Syncing data from remote peer...",
+    self.log:debug(string.format("syncing data from remote peer...",
                                  vim.inspect(data)))
 
     for key, value in pairs(data) do self[key] = value end
 
-    self.log:info("Synced runtime data from remote peer")
+    self.log:info("synced runtime data from remote peer")
 end
 
--- Sync activity set by self to all peers
+-- sync activity set by self to all peers
 function Presence:sync_self_activity()
     local self_as_peer = {socket = self.socket, workspace = self.workspace}
 
     for id, peer in pairs(self.peers) do
-        self.log:debug(string.format("Syncing activity to peer %s...", id))
+        self.log:debug(string.format("syncing activity to peer %s...", id))
 
         local peers = {[self.id] = self_as_peer}
         for peer_id, peer_data in pairs(self.peers) do
@@ -1002,65 +1002,65 @@ function Presence:sync_self_activity()
     end
 end
 
--- Sync activity set by peer
+-- sync activity set by peer
 function Presence:sync_peer_activity(data)
-    self.log:debug(string.format("Syncing peer activity %s...",
+    self.log:debug(string.format("syncing peer activity %s...",
                                  vim.inspect(data)))
     self:cancel()
     self:sync_self(data)
 end
 
 function Presence:stop()
-    self.log:debug("Disconnecting from Discord...")
+    self.log:debug("disconnecting from discord...")
     self.discord:disconnect(function()
-        self.log:info("Disconnected from Discord")
+        self.log:info("disconnected from discord")
     end)
 end
 
 --------------------------------------------------
--- Presence event handlers
+-- presence event handlers
 --------------------------------------------------
 
--- FocusGained events force-update the presence for the current buffer unless it's a quickfix window
+-- focusgained events force-update the presence for the current buffer unless it's a quickfix window
 function Presence:handle_focus_gained()
-    self.log:debug("Handling FocusGained event...")
+    self.log:debug("handling focusgained event...")
 
-    -- Skip a potentially extraneous update call on initial startup if tmux is being used
-    -- (See https://github.com/neovim/neovim/issues/14572)
-    if next(self.last_activity) == nil and os.getenv("TMUX") then
+    -- skip a potentially extraneous update call on initial startup if tmux is being used
+    -- (see https://github.com/neovim/neovim/issues/14572)
+    if next(self.last_activity) == nil and os.getenv("tmux") then
         self.log:debug(
-            "Skipping presence update for FocusGained event triggered by tmux...")
+            "skipping presence update for focusgained event triggered by tmux...")
         return
     end
 
     if vim.bo.filetype == "qf" then
-        self.log:debug("Skipping presence update for quickfix window...")
+        self.log:debug("skipping presence update for quickfix window...")
         return
     end
 
     self:update()
 end
 
--- TextChanged events debounce current buffer presence updates
+-- textchanged events debounce current buffer presence updates
 function Presence:handle_text_changed()
-    self.log:debug("Handling TextChanged event...")
+    self.log:debug("handling textchanged event...")
     self:update(nil, true)
 end
 
--- VimLeavePre events unregister the leaving instance to all peers and sets activity for the first peer
+-- vimleavepre events unregister the leaving instance to all peers and sets activity for the first peer
 function Presence:handle_vim_leave_pre()
-    self.log:debug("Handling VimLeavePre event...")
+    self.log:debug("handling vimleavepre event...")
     self:unregister_self()
     self:cancel()
 end
 
--- WinEnter events force-update the current buffer presence unless it's a quickfix window
+-- winenter events force-update the current buffer presence unless it's a quickfix window
 function Presence:handle_win_enter()
-    self.log:debug("Handling WinEnter event...")
+    self.log:debug("handling winenter event...")
 
     vim.schedule(function()
         if vim.bo.filetype == "qf" then
-            self.log:debug("Skipping presence update for quickfix window...")
+            self.log:debug("skipping presence update for quickfix window...")
             return
         end
 
@@ -1068,28 +1068,28 @@ function Presence:handle_win_enter()
     end)
 end
 
--- WinLeave events cancel the current buffer presence
+-- winleave events cancel the current buffer presence
 function Presence:handle_win_leave()
-    self.log:debug("Handling WinLeave event...")
+    self.log:debug("handling winleave event...")
 
     local current_window = vim.api.nvim_get_current_win()
 
     vim.schedule(function()
-        -- Avoid canceling presence when switching to a quickfix window
+        -- avoid canceling presence when switching to a quickfix window
         if vim.bo.filetype == "qf" then
             self.log:debug(
-                "Not canceling presence due to switching to quickfix window...")
+                "not canceling presence due to switching to quickfix window...")
             return
         end
 
-        -- Avoid canceling presence when switching between windows
+        -- avoid canceling presence when switching between windows
         if current_window ~= vim.api.nvim_get_current_win() then
             self.log:debug(
-                "Not canceling presence due to switching to a window within the same instance...")
+                "not canceling presence due to switching to a window within the same instance...")
             return
         end
 
-        self.log:debug("Canceling presence due to leaving window...")
+        self.log:debug("canceling presence due to leaving window...")
         self:cancel()
     end)
 end
